@@ -42,7 +42,9 @@ The `readConfig.sh` script outputs the current state of Configuration Register a
 
 
 The `readData.sh` script outputs the state of Data Registers 0x01-0x04:
-Script is incomplete and currently only outputs 1. Shunt voltage (R-0x01) @ PGA 1/8; 2. bus voiltage (R-0x02) @ 32V full-scale
+Script is incomplete and currently only outputs 
+1.  Shunt voltage (R-0x01) @ PGA 1/8;
+2.  Bus voiltage (R-0x02) @ 32V full-scale
 
     $ readConfig.sh
 
