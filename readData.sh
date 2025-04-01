@@ -31,7 +31,7 @@ echo -e "${RED}Shunt:${NC}"
 shuntRaw=$(i2cget -y "${i2cBus}" "${chipAddr}" "${shuntAddr}" i 2 | sed 's/ 0x//')
 shuntDec=$(( shuntRaw << 48 >> 48 ))
 shuntVolt=$(echo "scale=2; ${shuntDec}/100" | bc -l | sed -r 's#^(\-)?\.#\10.#' )
-echo -e "   ${CYN}Voltage:${NC} ${shuntVolt}mV"
+echo -e "    ${CYN}Voltage:${NC} ${shuntVolt}mV"
 
 #bus
 echo -e "${RED}Bus:${NC}"
@@ -39,18 +39,18 @@ busRaw=$(i2cget -y "${i2cBus}" "${chipAddr}" "${busAddr}" i 2 | sed 's/ 0x//')
 busDec=$(( busRaw >> 3 ))
 busVolt=$(echo "scale=2; ${busDec}*4/1000" | bc -l | sed -r 's#^(\-)?\.#\10.#' )
 
-echo -e "   ${CYN}Voltage:${NC} ${busVolt}V"
+echo -e "    ${CYN}Voltage:${NC} ${busVolt}V"
 
 echo
 
 ##For future use in power/current reading
 echo -e "${RED}Math:${NC}"
-CNVR=$(( (busDec >> 1) & 0x01 ))
+CNVR=$(( (busRaw >> 1) & 0x01 ))
 CNVRtxt=$( [[ "${CNVR}" == 1 ]] && echo "${GRN}Ready${NC}" || echo "${RED}Calculating${NC}"  )
-OVF=$(( busDec & 0x01 ))
+OVF=$(( busRaw & 0x01 ))
 OVFtxt=$( [[ "${OVF}" == 1 ]] && echo "${GRN}In range${NC}" || echo "${RED}Out of range${NC}" )
 
-echo -e "   ${CYN}Calculation:${NC} ${CNVRtxt}"
-echo -e "   ${CYN}Result:${NC} ${OVFtxt}"
+echo -e "    ${CYN}Calculation:${NC} ${CNVRtxt}"
+echo -e "    ${CYN}Result:${NC} ${OVFtxt}"
 
 echo
