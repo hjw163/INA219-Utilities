@@ -13,6 +13,11 @@ scriptDir="$(dirname "$(realpath "${0}")")"
 hash i2cget
 hash "${scriptDir}/tobase"
 
+if [[ "${1}" == '-q' ]]; then
+    exec 8>&1
+    exec 1>/dev/null
+fi
+
 i2cBus='1'
 chipAddr='0x42'
 dataAddr='0x00'
@@ -131,3 +136,8 @@ echo -e "   ${CYN}bus Voltage Monitoring:${NC} ${busStatus}"
 echo -e "   ${CYN}shunt Voltage Monitoring:${NC} ${shuntStatus}"
 
 echo
+
+if [[ "${1}" == '-q' ]]; then
+    exec 1>&8
+    exec 8>&-
+fi
