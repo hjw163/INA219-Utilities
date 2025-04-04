@@ -48,7 +48,7 @@ echo -e "${RED}Math:${NC}"
 CNVR=$(( (busRaw >> 1) & 0x01 ))
 CNVRtxt=$( [[ "${CNVR}" == 1 ]] && echo "${GRN}Ready${NC}" || echo "${RED}Calculating${NC}"  )
 OVF=$(( busRaw & 0x01 ))
-OVFtxt=$( [[ "${OVF}" == 1 ]] && echo "${GRN}In range${NC}" || echo "${RED}Out of range${NC}" )
+OVFtxt=$( [[ "${OVF}" == 0 ]] && echo "${GRN}In range${NC}" || echo "${RED}Out of range${NC}" )
 
 echo -e "    ${CYN}Calculation:${NC} ${CNVRtxt}"
 echo -e "    ${CYN}Result:${NC} ${OVFtxt}"
