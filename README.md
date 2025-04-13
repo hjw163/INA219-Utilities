@@ -42,20 +42,29 @@ The `readConfig.sh` script outputs the current state of Configuration Register a
 
 
 The `readData.sh` script outputs the state of Data Registers 0x01-0x04:
-Script is incomplete and currently only outputs 
-- Shunt voltage (R-0x01) @ PGA 1/8;
--  Bus voltage (R-0x02) @ 32V full-scale;
 
-         $ readConfig.sh
-            
-         Assume 32V full-scale & PGA 1/8
-                
-         Shunt:
-             Voltage: -19.21mV
-         Bus:
-             Voltage: 8.16V
-            
-         Math:
-             Calculation: Ready
-             Result: Out of range
+Shunt voltage & Bus voltage reading should be usable without any configurations.
 
+Current & Power readings require the i2c calibration register to be set, and the value of `maxCurrent` variable in `readData.sh` modified to reflect maximum expected current.
+
+    $ readData.sh
+    
+    Shunt:
+        Voltage: -6.330mV
+    Bus:
+        Voltage: 8.196V
+
+    Math:
+        Calculation: Ready
+        Result: In range
+
+    Calibration register: Not set, no Current/Power reading
+
+    Current:
+        Min limit (LSB): 152.587uA
+        Max limit: 5A
+        Value: 0A
+    Power:
+        Min limit (LSB): 3.051mW
+        Max limit: 100W
+        Value: 0W
