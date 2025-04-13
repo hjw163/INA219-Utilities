@@ -12,6 +12,7 @@ scriptDir="$(dirname "$(realpath "${0}")")"
 
 hash i2cget
 hash "${scriptDir}/tobase"
+hash sed
 
 if [[ "${1}" == '-q' ]]; then
     exec 8>&1
