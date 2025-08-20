@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 
-
 #i2cdetect i2cdump i2cget i2cset i2c-stub-from-dump  i2ctransfer
+
+#       15      14      13      12      11      10      9       8       7       6       5       4       3       2       1       0
+#       RST     —       BRNG    PG1     PG0     BADC4   BADC3   BADC2   BADC1   SADC4   SADC3   SADC2   SADC1   MODE3   MODE2   MODE1
+#       R/W-0   R/W-0   R/W-1   R/W-1   R/W-1   R/W-0   R/W-0   R/W-1   R/W-1   R/W-0   R/W-0   R/W-1   R/W-1   R/W-1   R/W-1   R/W-1
 
 set -e
 
@@ -11,93 +14,131 @@ hash i2cget
 hash "${scriptDir}/tobase"
 hash sed
 
-maxCurrent=5 #to be set to maximum expected current
-
-currentLSB=$( bc -l <<< "${maxCurrent}/(2^15)" )
-powerLSB=$( bc -l <<< "20*${currentLSB}" )
-maxPower=$( bc -l <<< "20*${maxCurrent}" )
+if [[ "${1}" == '-q' ]]; then
+    exec 8>&1
+    exec 1>/dev/null
+fi
 
 i2cBus='1'
 chipAddr='0x42'
-shuntAddr='0x01'
-busAddr='0x02'
-powerAddr='0x03'
-currAddr='0x04'
-caliAddr='0x05'
+dataAddr='0x00'
+
+reg=$( i2cget -y "${i2cBus}" "${chipAddr}" "${dataAddr}" i 2 | sed 's/ 0x//' | "${scriptDir}/tobase" 2 )
+
+reset="${reg:0:1}"
+brng="0b${reg:2:1}"
+pga="0b${reg:3:2}"
+badc="0b${reg:5:4}"
+sadc="0b${reg:9:4}"
+mode="0b${reg:13:3}"
 
 CYN='\e[1;36m' #cyan
 NC='\e[0m' #noColor
 RED='\e[1;31m' #red
-GRN='\e[1;32m' #green
 
-##config set in 0x00 register dosent seem to affect shunt & bus register voltage scaling...
+echo
 
-scale () {
-    local scale="${3}"
-    local calc="${2}"
-    local val="${1}"
-    echo "scale=${scale}; ${val}${calc}" | bc -l | sed -r 's#^(\-)?\.#\10.#'
+echo -e "${CYN}reset:${NC} ${reset}"
+echo
+echo -e "${RED}configuration:${NC}"
+
+busVR=$(echo "${brng}" | "${scriptDir}/tobase" 2)
+busVrange=$( [[ "${busVR}" == 1 ]] && echo "16V fullscale range" || echo "32V fullscale range" )
+echo -e "   ${CYN}bus voltage range:${NC} ${busVrange}"
+
+pgaMode=$( echo "${pga}" | "${scriptDir}/tobase" 10 )
+pgaRange=(
+    '1x @ ±40mV'
+    '1/2x @ ±80mV'
+    '1/4x @ ±160mV'
+    '1/8x @±320mV'
+)
+
+echo -e "   ${CYN}Programmable Gain Amplifier:${NC} Mode${pgaMode} (${pgaRange[${pgaMode}]})"
+
+declare -A parseADCregRtn
+parseADCreg () {
+    local mode="${1:0:1}"
+    local data2; data2=$(echo "0b${1:2:2}" | "${scriptDir}/tobase" 10)
+    local data3; data3=$(echo "0b${1:1:3}" | "${scriptDir}/tobase" 10)
+
+    if [[ "${mode}" == 0 ]]; then
+        local modeTxt="Single"
+        local modeVal="$(( 9+data2 )) bits"
+    else
+        local modeTxt="Averaging"
+        local modeVal="$(( 2^data3 ))x16bit samples"
+    fi
+
+    # shellcheck disable=SC2034
+    parseADCregRtn=(
+        ["mode"]="${modeTxt}"
+        ["resolution"]="${modeVal}"
+    )
 }
 
-regGetRaw () {
-    local fromAddr="${1}"
-    i2cget -y "${i2cBus}" "${chipAddr}" "${fromAddr}" i 2 | sed 's/ 0x//'
+#BADC
+badcMode=$(echo "${badc}" | "${scriptDir}/tobase" 2)
+badcMode=${badcMode:4:4}
+# ADC bit 4             0/1 [mode/sample set]
+# 1x mode set (0)               (9 + <2bitNum>)bits mode
+# Avg sample set (1)    (2^<3bitNum>)sample values
+
+parseADCreg "${badcMode}"
+declare -n badcGet=parseADCregRtn
+
+echo -e "${RED}badc mode:${NC}"
+echo -e "   ${CYN}sample mode:${NC} ${badcGet['mode']}"
+echo -e "   ${CYN}sample resolution:${NC} ${badcGet['resolution']}"
+
+#SADC
+sadcMode=$(echo "${sadc}" | "${scriptDir}/tobase" 2)
+sadcMode=${sadcMode:4:4}
+
+parseADCreg "${sadcMode}"
+declare -n sadcGet=parseADCregRtn
+
+echo -e "${RED}sadc mode:${NC}"
+echo -e "   ${CYN}sample mode:${NC} ${sadcGet['mode']}"
+echo -e "   ${CYN}sample resolution:${NC} ${sadcGet['resolution']}"
+
+declare -A parseModeRegRtn
+parseModeReg () {
+    local mode; mode=$( [[ "${1:0:1}" == 1 ]] && echo "Continuous" || echo "Triggered" )
+    local shunt="${1:2:1}"
+    local bus="${1:1:1}"
+    local status="up"
+
+    if [[ "${1:2:2}" == 0 ]]; then
+        status=$( [[ ${1:0:1} == 1 ]] && echo "Power-down" || echo "ADC off (disabled)" )
+    fi
+
+    # shellcheck disable=SC2034
+    parseModeRegRtn=(
+        ["mode"]="${mode}"
+        ["shunt"]="${shunt}"
+        ["bus"]="${bus}"
+        ["status"]="${status}"
+    )
 }
 
-echo
+oprMode=$(echo "${mode}" | "${scriptDir}/tobase" 2)
+oprMode="${oprMode:5:3}"
+parseModeReg "${oprMode}"
+declare -n oprModeGet=parseModeRegRtn
 
-#shunt
-echo -e "${RED}Shunt:${NC}"
-shuntRaw=$(regGetRaw "${shuntAddr}")
-shuntDec=$((shuntRaw << 48 >> 48))
-shuntVolt=$(scale "${shuntDec}" '*10/1000' 3)
-echo -e "    ${CYN}Voltage:${NC} ${shuntVolt}mV"
+busStatus=$([[ "${oprModeGet['bus']}" == 1 ]] && echo "Active" || echo "Inactive")
+shuntStatus=$([[ "${oprModeGet['shunt']}" == 1 ]] && echo "Active" || echo "Inactive")
 
-#bus
-echo -e "${RED}Bus:${NC}"
-busRaw=$(regGetRaw "${busAddr}")
-busDec=$(( busRaw >> 3 ))
-busVolt=$(scale "${busDec}" '*4/1000' 3)
-echo -e "    ${CYN}Voltage:${NC} ${busVolt}V"
+echo -e "${RED}monitoring:${NC}"
+echo -e "   ${CYN}status:${NC} ${oprModeGet['status']}"
+echo -e "   ${CYN}operating mode:${NC} ${oprModeGet['mode']}"
+echo -e "   ${CYN}bus Voltage Monitoring:${NC} ${busStatus}"
+echo -e "   ${CYN}shunt Voltage Monitoring:${NC} ${shuntStatus}"
 
 echo
 
-echo -e "${RED}Math:${NC}"
-CNVR=$(( (busRaw >> 1) & 0x01 ))
-CNVRtxt=$( [[ "${CNVR}" == 1 ]] && echo "${GRN}Ready${NC}" || echo "${RED}Calculating${NC}"  )
-OVF=$(( busRaw & 0x01 ))
-OVFtxt=$( [[ "${OVF}" == 0 ]] && echo "${GRN}In range${NC}" || echo "${RED}Out of range${NC}" )
-echo -e "    ${CYN}Calculation:${NC} ${CNVRtxt}"
-echo -e "    ${CYN}Result:${NC} ${OVFtxt}"
-
-echo
-
-calibration=$(regGetRaw "${caliAddr}")
-if [[ "${calibration}" == 0x0000 ]]; then
-    CalibrationTxt="${CYN}Calibration register:${NC} ${RED}Not set, no Current/Power reading${NC}"
-else
-    CalibrationTxt="${CYN}Calibration Value:${NC} ${CalibrationTxt}"
+if [[ "${1}" == '-q' ]]; then
+    exec 1>&8
+    exec 8>&-
 fi
-echo -e "${CalibrationTxt}"
-
-echo
-
-#current
-echo -e "${RED}Current:${NC}"
-currRaw=$(regGetRaw "${currAddr}")
-currDec=$(( currRaw << 48 ))
-currAmp=$(scale "${currDec}" "*${currentLSB}*1000/1" 3)
-echo -e "    ${CYN}Min limit (LSB):${NC} $(scale "${currentLSB}" "*(1000^2)/1" 3)uA"
-echo -e "    ${CYN}Max limit:${NC} ${maxCurrent}A"
-echo -e "    ${CYN}Value:${NC} ${currAmp}A"
-
-#power
-echo -e "${RED}Power:${NC}"
-powerRaw=$(regGetRaw "${powerAddr}")
-powerDec=$(( powerRaw << 48 ))
-powerWatt=$(scale "${powerDec}" "*${powerLSB}*1000/1" 3)
-echo -e "    ${CYN}Min limit (LSB):${NC} $(scale "${powerLSB}" "*1000/1" 3)mW"
-echo -e "    ${CYN}Max limit:${NC} ${maxPower}W"
-echo -e "    ${CYN}Value:${NC} ${powerWatt}W"
-
-echo
