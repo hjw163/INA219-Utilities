@@ -19,8 +19,11 @@ if [[ "${1}" == '-q' ]]; then
     exec 1>/dev/null
 fi
 
-i2cBus='1'
-chipAddr='0x42'
+# shellcheck source=SCRIPTDIR/userVars.cfg.sh
+source "${scriptDir}/userVars.cfg.sh"
+
+i2cBus=${userVar['i2cBus']}
+chipAddr=${userVar['chipAddr']}
 dataAddr='0x00'
 
 reg=$( i2cget -y "${i2cBus}" "${chipAddr}" "${dataAddr}" i 2 | sed 's/ 0x//' | "${scriptDir}/tobase" 2 )

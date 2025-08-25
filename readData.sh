@@ -11,14 +11,17 @@ hash i2cget
 hash "${scriptDir}/tobase"
 hash sed
 
-maxCurrent=5 #to be set to maximum expected current
+# shellcheck source=SCRIPTDIR/userVars.cfg.sh
+source "${scriptDir}/userVars.cfg.sh"
+
+maxCurrent=${userVar['maxCurrent']}
 
 currentLSB=$( bc -l <<< "${maxCurrent}/(2^15)" )
 powerLSB=$( bc -l <<< "20*${currentLSB}" )
 maxPower=$( bc -l <<< "20*${maxCurrent}" )
 
-i2cBus='1'
-chipAddr='0x42'
+i2cBus=${userVar['i2cBus']}
+chipAddr=${userVar['chipAddr']}
 shuntAddr='0x01'
 busAddr='0x02'
 powerAddr='0x03'
